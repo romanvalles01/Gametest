@@ -3,9 +3,554 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Document</title>
+    <title>Megabonk Arena</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: radial-gradient(circle at 20% 20%, #1a2140, #0b0f1e 50%, #05070f);
+        color: #f7f8fb;
+      }
+      canvas {
+        display: block;
+      }
+      .hud {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        min-width: 260px;
+        background: rgba(10, 12, 24, 0.7);
+        border: 1px solid #2f365a;
+        border-radius: 12px;
+        padding: 12px 14px;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(4px);
+      }
+      .hud h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        letter-spacing: 0.5px;
+      }
+      .bar {
+        position: relative;
+        background: #121629;
+        border: 1px solid #2f365a;
+        border-radius: 10px;
+        height: 16px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .bar span {
+        display: block;
+        height: 100%;
+      }
+      .health {
+        background: linear-gradient(90deg, #ff6b6b, #d72638);
+      }
+      .xp {
+        background: linear-gradient(90deg, #63e6be, #3bc9db);
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 10px;
+        font-size: 12px;
+        color: #c8d3f5;
+      }
+      .log {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #9fb3ff;
+      }
+      .upgrade-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(6, 8, 16, 0.78);
+        backdrop-filter: blur(3px);
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .upgrade-overlay.active {
+        visibility: visible;
+        opacity: 1;
+      }
+      .upgrade-card {
+        background: #0f1328;
+        border: 1px solid #2f365a;
+        border-radius: 14px;
+        padding: 16px;
+        margin: 10px;
+        width: 220px;
+        cursor: pointer;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+      }
+      .upgrade-card:hover {
+        transform: translateY(-6px) scale(1.02);
+        border-color: #63e6be;
+      }
+      .upgrade-card h3 {
+        margin: 0 0 6px;
+        color: #63e6be;
+      }
+      .upgrade-card p {
+        margin: 0;
+        color: #d0d6ff;
+        font-size: 13px;
+      }
+      .instructions {
+        position: absolute;
+        bottom: 14px;
+        left: 12px;
+        background: rgba(8, 10, 22, 0.7);
+        border: 1px solid #2f365a;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12px;
+        color: #c8d3f5;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 8px;
+        background: #242b4f;
+        color: #7c92ff;
+        margin-right: 6px;
+      }
+    </style>
   </head>
   <body>
-    <h1>hi</h1>
+    <div class="hud">
+      <h1>Megabonk Arena</h1>
+      <div class="bar" aria-label="Health">
+        <span class="health" id="healthBar"></span>
+      </div>
+      <div class="bar" aria-label="Experience">
+        <span class="xp" id="xpBar"></span>
+      </div>
+      <div class="stats">
+        <div>Level: <strong id="level">1</strong></div>
+        <div>XP: <strong id="xp">0 / 10</strong></div>
+        <div>HP: <strong id="hp">100 / 100</strong></div>
+        <div>Damage: <strong id="damage">12</strong></div>
+        <div>Cooldown: <strong id="cooldown">0.6s</strong></div>
+        <div>Tomes: <strong id="tomes">0</strong></div>
+      </div>
+      <div class="log" id="log">Derrota minions para subir de nivel.</div>
+    </div>
+
+      <div class="instructions">
+      <div><span class="badge">WASD</span> Moverse</div>
+      <div><span class="badge">Click</span> Disparo</div>
+      <div><span class="badge">E</span> Pulso arcano (tomo)</div>
+      <div><span class="badge">Q</span> Rayo láser</div>
+      <div><span class="badge">ESC</span> Pausa</div>
+    </div>
+
+    <div class="upgrade-overlay" id="upgradeOverlay" role="dialog" aria-modal="true">
+      <div class="upgrade-card" data-upgrade="damage">
+        <h3>Hoja afilada</h3>
+        <p>Incrementa el daño base de las armas.</p>
+      </div>
+      <div class="upgrade-card" data-upgrade="cooldown">
+        <h3>Reflejos rápidos</h3>
+        <p>Reduce el enfriamiento de tus disparos.</p>
+      </div>
+      <div class="upgrade-card" data-upgrade="tome">
+        <h3>Tomo arcano</h3>
+        <p>Desbloquea y mejora el pulso mágico.</p>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0x05070f, 15, 45);
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        200
+      );
+      camera.position.set(0, 18, 18);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const hemi = new THREE.HemisphereLight(0x6ea4ff, 0x0c0f2b, 0.7);
+      scene.add(hemi);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+      dir.position.set(10, 18, 10);
+      dir.castShadow = true;
+      scene.add(dir);
+
+      const groundGeo = new THREE.PlaneGeometry(80, 80, 32, 32);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x182347,
+        wireframe: false,
+        roughness: 0.9,
+        metalness: 0.05,
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      const playerGeo = new THREE.SphereGeometry(0.8, 20, 20);
+      const playerMat = new THREE.MeshStandardMaterial({
+        color: 0x63e6be,
+        emissive: 0x10332b,
+        roughness: 0.3,
+      });
+      const player = new THREE.Mesh(playerGeo, playerMat);
+      player.castShadow = true;
+      player.position.y = 0.9;
+      scene.add(player);
+
+      const state = {
+        velocity: new THREE.Vector3(),
+        speed: 10,
+        hp: 100,
+        maxHp: 100,
+        damage: 12,
+        level: 1,
+        xp: 0,
+        nextXp: 10,
+        cooldown: 0.6,
+        lastShot: 0,
+        arcaneReady: false,
+        arcaneCooldown: 8,
+        lastArcane: -10,
+        tomes: 0,
+        laserCooldown: 2.4,
+        lastLaser: -10,
+        paused: false,
+      };
+
+      const keys = new Set();
+      const minions = [];
+      const projectiles = [];
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      const planeNormal = new THREE.Vector3(0, 1, 0);
+      const plane = new THREE.Plane(planeNormal, 0);
+      const clock = new THREE.Clock();
+
+      const hud = {
+        healthBar: document.getElementById("healthBar"),
+        xpBar: document.getElementById("xpBar"),
+        level: document.getElementById("level"),
+        xp: document.getElementById("xp"),
+        hp: document.getElementById("hp"),
+        damage: document.getElementById("damage"),
+        cooldown: document.getElementById("cooldown"),
+        tomes: document.getElementById("tomes"),
+        log: document.getElementById("log"),
+      };
+
+      const overlay = document.getElementById("upgradeOverlay");
+      overlay.addEventListener("click", (event) => {
+        const target = event.target.closest(".upgrade-card");
+        if (!target) return;
+        applyUpgrade(target.dataset.upgrade);
+        overlay.classList.remove("active");
+      });
+
+      const aimDir = new THREE.Vector3(1, 0, 0);
+      function updateAim(event) {
+        pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const point = new THREE.Vector3();
+        raycaster.ray.intersectPlane(plane, point);
+        aimDir.subVectors(point, player.position).setY(0).normalize();
+      }
+
+      window.addEventListener("mousemove", updateAim);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      window.addEventListener("keydown", (e) => {
+        const key = e.key.toLowerCase();
+        keys.add(key);
+        if (key === "e") {
+          tryArcanePulse();
+        }
+        if (key === "q") {
+          fireLaser();
+        }
+        if (e.key === "Escape") {
+          state.paused = !state.paused;
+          addLog(state.paused ? "Juego en pausa." : "Reanudado.");
+        }
+      });
+      window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+      window.addEventListener("click", () => shoot());
+
+      function addLog(message) {
+        hud.log.textContent = message;
+      }
+
+      function clamp(val, min, max) {
+        return Math.min(Math.max(val, min), max);
+      }
+
+      function updateHud() {
+        const hpRatio = state.hp / state.maxHp;
+        const xpRatio = state.xp / state.nextXp;
+        hud.healthBar.style.width = `${clamp(hpRatio, 0, 1) * 100}%`;
+        hud.xpBar.style.width = `${clamp(xpRatio, 0, 1) * 100}%`;
+        hud.level.textContent = state.level;
+        hud.xp.textContent = `${state.xp} / ${state.nextXp}`;
+        hud.hp.textContent = `${Math.max(0, Math.floor(state.hp))} / ${state.maxHp}`;
+        hud.damage.textContent = state.damage;
+        hud.cooldown.textContent = `${state.cooldown.toFixed(2)}s`;
+        hud.tomes.textContent = state.tomes;
+      }
+
+      function spawnMinion() {
+        const geo = new THREE.DodecahedronGeometry(0.65, 0);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xffc857,
+          emissive: 0x29150b,
+          roughness: 0.6,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 16 + Math.random() * 10;
+        mesh.position.set(Math.cos(angle) * radius, 0.65, Math.sin(angle) * radius);
+        scene.add(mesh);
+        minions.push({
+          mesh,
+          hp: 25,
+          speed: 3 + Math.random() * 1.5,
+          lastHit: 0,
+        });
+      }
+
+      for (let i = 0; i < 8; i++) spawnMinion();
+
+      function shoot() {
+        const now = clock.elapsedTime;
+        if (now - state.lastShot < state.cooldown) return;
+        if (state.paused) return;
+        state.lastShot = now;
+        const dir = aimDir.clone();
+        if (dir.lengthSq() < 0.1) return;
+        const geo = new THREE.SphereGeometry(0.2, 10, 10);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9ad5ff, emissive: 0x10243a });
+        const bullet = new THREE.Mesh(geo, mat);
+        bullet.castShadow = true;
+        bullet.position.copy(player.position).addScaledVector(dir, 1.1).setY(0.5);
+        scene.add(bullet);
+        projectiles.push({ mesh: bullet, velocity: dir.multiplyScalar(18), created: now });
+      }
+
+      function fireLaser() {
+        const now = clock.elapsedTime;
+        if (state.paused) return;
+        if (now - state.lastLaser < state.laserCooldown) return;
+        const dir = aimDir.clone();
+        if (dir.lengthSq() < 0.1) return;
+        state.lastLaser = now;
+        const start = player.position.clone();
+        start.y = 0.5;
+        const beamLength = 14;
+        const beamWidth = 0.6;
+        const damage = state.damage * 1.8;
+        const beam = new THREE.Mesh(
+          new THREE.BoxGeometry(beamLength, 0.18, 0.18),
+          new THREE.MeshStandardMaterial({ color: 0x7cf3ff, emissive: 0x3aa5c9 })
+        );
+        beam.castShadow = false;
+        beam.receiveShadow = false;
+        const target = dir.clone().multiplyScalar(beamLength / 2);
+        beam.position.copy(start).add(target);
+        beam.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+        scene.add(beam);
+        setTimeout(() => scene.remove(beam), 150);
+
+        minions.forEach((minion) => {
+          const toMinion = new THREE.Vector3().subVectors(minion.mesh.position, start);
+          toMinion.y = 0;
+          const proj = toMinion.dot(dir);
+          if (proj < 0 || proj > beamLength) return;
+          const perpSq = toMinion.lengthSq() - proj * proj;
+          if (perpSq <= beamWidth * beamWidth) {
+            minion.hp -= damage;
+            minion.mesh.material.emissive.setHex(0x3aa5c9);
+          }
+        });
+        addLog("Rayo láser emitido.");
+      }
+
+      function tryArcanePulse() {
+        const now = clock.elapsedTime;
+        if (!state.arcaneReady || now - state.lastArcane < state.arcaneCooldown) return;
+        state.lastArcane = now;
+        const radius = 4.5 + state.tomes * 0.6;
+        const damage = 18 + state.tomes * 4;
+        minions.forEach((minion) => {
+          const dist = minion.mesh.position.distanceTo(player.position);
+          if (dist <= radius) {
+            minion.hp -= damage;
+            minion.mesh.material.emissive.setHex(0x642929);
+          }
+        });
+        addLog(`Pulso arcano causado por ${Math.floor(damage)} de daño.`);
+      }
+
+      function applyUpgrade(type) {
+        switch (type) {
+          case "damage":
+            state.damage += 6;
+            addLog("La hoja vibra con más fuerza.");
+            break;
+          case "cooldown":
+            state.cooldown = Math.max(0.25, state.cooldown - 0.08);
+            addLog("Disparas con reflejos felinos.");
+            break;
+          case "tome":
+            state.tomes += 1;
+            state.arcaneReady = true;
+            state.arcaneCooldown = Math.max(4, state.arcaneCooldown - 0.5);
+            addLog("Un tomo arcano susurra tu nombre.");
+            break;
+        }
+        updateHud();
+      }
+
+      function gainXp(amount) {
+        state.xp += amount;
+        if (state.xp >= state.nextXp) {
+          state.level += 1;
+          state.xp -= state.nextXp;
+          state.nextXp = Math.floor(state.nextXp * 1.25 + 8);
+          overlay.classList.add("active");
+          addLog(`¡Nivel ${state.level}! Elige tu mejora.`);
+        }
+        updateHud();
+      }
+
+      function damagePlayer(amount) {
+        state.hp -= amount;
+        if (state.hp <= 0) {
+          state.hp = 0;
+          addLog("Has caído. Recarga la página para intentarlo de nuevo.");
+        }
+      }
+
+      function updatePlayer(delta) {
+        const move = new THREE.Vector3();
+        if (keys.has("w")) move.z -= 1;
+        if (keys.has("s")) move.z += 1;
+        if (keys.has("a")) move.x -= 1;
+        if (keys.has("d")) move.x += 1;
+        move.normalize().multiplyScalar(state.speed * delta);
+        player.position.add(move);
+        player.position.x = clamp(player.position.x, -30, 30);
+        player.position.z = clamp(player.position.z, -30, 30);
+        camera.position.lerp(
+          new THREE.Vector3(player.position.x, 18, player.position.z + 12),
+          0.08
+        );
+        camera.lookAt(player.position.x, 0, player.position.z);
+      }
+
+      function updateProjectiles(delta) {
+        const lifetime = 2.5;
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+          const p = projectiles[i];
+          p.mesh.position.addScaledVector(p.velocity, delta);
+          if (clock.elapsedTime - p.created > lifetime) {
+            scene.remove(p.mesh);
+            projectiles.splice(i, 1);
+            continue;
+          }
+          for (let j = minions.length - 1; j >= 0; j--) {
+            const m = minions[j];
+            if (p.mesh.position.distanceTo(m.mesh.position) < 0.7) {
+              m.hp -= state.damage;
+              scene.remove(p.mesh);
+              projectiles.splice(i, 1);
+              break;
+            }
+          }
+        }
+      }
+
+      function updateMinions(delta) {
+        const damageDelay = 0.7;
+        for (let i = minions.length - 1; i >= 0; i--) {
+          const m = minions[i];
+          const dir = new THREE.Vector3().subVectors(player.position, m.mesh.position);
+          dir.y = 0;
+          const dist = dir.length();
+          dir.normalize();
+          m.mesh.position.addScaledVector(dir, m.speed * delta);
+          m.mesh.lookAt(player.position.x, 0, player.position.z);
+
+          if (dist < 1.1 && clock.elapsedTime - m.lastHit > damageDelay) {
+            damagePlayer(9);
+            m.lastHit = clock.elapsedTime;
+          }
+
+          if (m.hp <= 0) {
+            scene.remove(m.mesh);
+            minions.splice(i, 1);
+            gainXp(6 + Math.floor(Math.random() * 4));
+            continue;
+          }
+        }
+        if (minions.length < 10) {
+          if (Math.random() < 0.6 * delta) spawnMinion();
+        }
+      }
+
+      function autoShoot() {
+        if (state.paused) return;
+        const now = clock.elapsedTime;
+        if (now - state.lastShot >= state.cooldown) {
+          shoot();
+        }
+      }
+
+      function animate() {
+        const delta = clock.getDelta();
+        if (state.paused) {
+          renderer.render(scene, camera);
+          requestAnimationFrame(animate);
+          return;
+        }
+        autoShoot();
+        updatePlayer(delta);
+        updateProjectiles(delta);
+        updateMinions(delta);
+        updateHud();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
+      updateHud();
+      animate();
+    </script>
   </body>
 </html>
