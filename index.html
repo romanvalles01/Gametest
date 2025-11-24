@@ -66,6 +66,61 @@
         font-size: 12px;
         color: #9fb3ff;
       }
+      .abilities {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .ability {
+        position: relative;
+        width: 68px;
+        height: 68px;
+        border-radius: 12px;
+        border: 1px solid #2f365a;
+        background: linear-gradient(145deg, #11142a, #161c3b);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+      .ability .cooldown-mask {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(6, 10, 18, 0.7), rgba(6, 10, 18, 0.95));
+        backdrop-filter: blur(2px);
+        height: 0%;
+        transition: height 0.15s linear;
+        pointer-events: none;
+      }
+      .ability .label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #d0d6ff;
+        font-size: 12px;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .ability .keycap {
+        margin-top: 4px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: #242b4f;
+        color: #7c92ff;
+        font-size: 11px;
+      }
+      .ability .status {
+        position: absolute;
+        bottom: 4px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 11px;
+        color: #8be9ff;
+        font-weight: 600;
+        text-shadow: 0 0 8px rgba(99, 230, 190, 0.55);
+      }
       .upgrade-overlay {
         position: absolute;
         inset: 0;
@@ -143,6 +198,26 @@
         <div>Damage: <strong id="damage">12</strong></div>
         <div>Cooldown: <strong id="cooldown">0.6s</strong></div>
         <div>Tomes: <strong id="tomes">0</strong></div>
+      </div>
+      <div class="abilities" aria-label="Habilidades">
+        <div class="ability" id="arcaneAbility" title="Pulso arcano (E)">
+          <div class="cooldown-mask" id="arcaneMask"></div>
+          <div class="label">
+            <div>Pulso</div>
+            <div>Arcano</div>
+            <div class="keycap">E</div>
+          </div>
+          <div class="status" id="arcaneStatus">Bloqueado</div>
+        </div>
+        <div class="ability" id="laserAbility" title="Rayo láser (Q)">
+          <div class="cooldown-mask" id="laserMask"></div>
+          <div class="label">
+            <div>Rayo</div>
+            <div>Láser</div>
+            <div class="keycap">Q</div>
+          </div>
+          <div class="status" id="laserStatus">Listo</div>
+        </div>
       </div>
       <div class="log" id="log">Derrota minions para subir de nivel.</div>
     </div>
@@ -259,6 +334,10 @@
         cooldown: document.getElementById("cooldown"),
         tomes: document.getElementById("tomes"),
         log: document.getElementById("log"),
+        arcaneMask: document.getElementById("arcaneMask"),
+        laserMask: document.getElementById("laserMask"),
+        arcaneStatus: document.getElementById("arcaneStatus"),
+        laserStatus: document.getElementById("laserStatus"),
       };
 
       const overlay = document.getElementById("upgradeOverlay");
@@ -312,7 +391,7 @@
         return Math.min(Math.max(val, min), max);
       }
 
-      function updateHud() {
+      function updateHud(now = clock.elapsedTime) {
         const hpRatio = state.hp / state.maxHp;
         const xpRatio = state.xp / state.nextXp;
         hud.healthBar.style.width = `${clamp(hpRatio, 0, 1) * 100}%`;
@@ -323,6 +402,27 @@
         hud.damage.textContent = state.damage;
         hud.cooldown.textContent = `${state.cooldown.toFixed(2)}s`;
         hud.tomes.textContent = state.tomes;
+        updateAbilityBoxes(now);
+      }
+
+      function updateAbilityBoxes(now) {
+        const arcaneRemaining = state.arcaneReady
+          ? Math.max(0, state.arcaneCooldown - (now - state.lastArcane))
+          : null;
+        const laserRemaining = Math.max(0, state.laserCooldown - (now - state.lastLaser));
+
+        if (!state.arcaneReady) {
+          hud.arcaneMask.style.height = "100%";
+          hud.arcaneStatus.textContent = "Bloqueado";
+        } else {
+          const ratio = clamp(arcaneRemaining / state.arcaneCooldown, 0, 1);
+          hud.arcaneMask.style.height = `${ratio * 100}%`;
+          hud.arcaneStatus.textContent = arcaneRemaining > 0 ? `${arcaneRemaining.toFixed(1)}s` : "Listo";
+        }
+
+        const laserRatio = clamp(laserRemaining / state.laserCooldown, 0, 1);
+        hud.laserMask.style.height = `${laserRatio * 100}%`;
+        hud.laserStatus.textContent = laserRemaining > 0 ? `${laserRemaining.toFixed(1)}s` : "Listo";
       }
 
       function spawnMinion() {
@@ -402,12 +502,48 @@
         addLog("Rayo láser emitido.");
       }
 
+      function spawnArcaneElectricity(radius) {
+        const sparks = new THREE.Group();
+        const lines = 14;
+        for (let i = 0; i < lines; i++) {
+          const points = [];
+          const theta = (Math.PI * 2 * i) / lines + Math.random() * 0.4;
+          const segments = 6 + Math.floor(Math.random() * 4);
+          const end = new THREE.Vector3(
+            Math.cos(theta) * radius,
+            0.2 + Math.random() * 0.4,
+            Math.sin(theta) * radius
+          );
+          for (let s = 0; s <= segments; s++) {
+            const t = s / segments;
+            const jitter = (1 - t) * 0.3 + Math.random() * 0.2;
+            points.push(
+              new THREE.Vector3(
+                end.x * t + (Math.random() - 0.5) * jitter,
+                end.y * t + (Math.random() - 0.5) * 0.35,
+                end.z * t + (Math.random() - 0.5) * jitter
+              )
+            );
+          }
+          const geo = new THREE.BufferGeometry().setFromPoints(points);
+          const line = new THREE.Line(
+            geo,
+            new THREE.LineBasicMaterial({ color: 0x7cf3ff, transparent: true, opacity: 0.9 })
+          );
+          sparks.add(line);
+        }
+        sparks.position.copy(player.position);
+        scene.add(sparks);
+        setTimeout(() => scene.remove(sparks), 350);
+      }
+
       function tryArcanePulse() {
         const now = clock.elapsedTime;
         if (!state.arcaneReady || now - state.lastArcane < state.arcaneCooldown) return;
         state.lastArcane = now;
         const radius = 4.5 + state.tomes * 0.6;
         const damage = 18 + state.tomes * 4;
+        spawnArcaneElectricity(radius);
         minions.forEach((minion) => {
           const dist = minion.mesh.position.distanceTo(player.position);
           if (dist <= radius) {
@@ -535,7 +671,9 @@
 
       function animate() {
         const delta = clock.getDelta();
+        const now = clock.elapsedTime;
         if (state.paused) {
+          updateHud(now);
           renderer.render(scene, camera);
           requestAnimationFrame(animate);
           return;
@@ -544,7 +682,7 @@
         updatePlayer(delta);
         updateProjectiles(delta);
         updateMinions(delta);
-        updateHud();
+        updateHud(now);
         renderer.render(scene, camera);
         requestAnimationFrame(animate);
       }
