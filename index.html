@@ -147,10 +147,12 @@
       <div class="log" id="log">Derrota minions para subir de nivel.</div>
     </div>
 
-    <div class="instructions">
+      <div class="instructions">
       <div><span class="badge">WASD</span> Moverse</div>
       <div><span class="badge">Click</span> Disparo</div>
       <div><span class="badge">E</span> Pulso arcano (tomo)</div>
+      <div><span class="badge">Q</span> Rayo láser</div>
+      <div><span class="badge">ESC</span> Pausa</div>
     </div>
 
     <div class="upgrade-overlay" id="upgradeOverlay" role="dialog" aria-modal="true">
@@ -233,6 +235,9 @@
         arcaneCooldown: 8,
         lastArcane: -10,
         tomes: 0,
+        laserCooldown: 2.4,
+        lastLaser: -10,
+        paused: false,
       };
 
       const keys = new Set();
@@ -283,9 +288,17 @@
       });
 
       window.addEventListener("keydown", (e) => {
-        keys.add(e.key.toLowerCase());
-        if (e.key.toLowerCase() === "e") {
+        const key = e.key.toLowerCase();
+        keys.add(key);
+        if (key === "e") {
           tryArcanePulse();
+        }
+        if (key === "q") {
+          fireLaser();
+        }
+        if (e.key === "Escape") {
+          state.paused = !state.paused;
+          addLog(state.paused ? "Juego en pausa." : "Reanudado.");
         }
       });
       window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
@@ -338,6 +351,7 @@
       function shoot() {
         const now = clock.elapsedTime;
         if (now - state.lastShot < state.cooldown) return;
+        if (state.paused) return;
         state.lastShot = now;
         const dir = aimDir.clone();
         if (dir.lengthSq() < 0.1) return;
@@ -348,6 +362,44 @@
         bullet.position.copy(player.position).addScaledVector(dir, 1.1).setY(0.5);
         scene.add(bullet);
         projectiles.push({ mesh: bullet, velocity: dir.multiplyScalar(18), created: now });
+      }
+
+      function fireLaser() {
+        const now = clock.elapsedTime;
+        if (state.paused) return;
+        if (now - state.lastLaser < state.laserCooldown) return;
+        const dir = aimDir.clone();
+        if (dir.lengthSq() < 0.1) return;
+        state.lastLaser = now;
+        const start = player.position.clone();
+        start.y = 0.5;
+        const beamLength = 14;
+        const beamWidth = 0.6;
+        const damage = state.damage * 1.8;
+        const beam = new THREE.Mesh(
+          new THREE.BoxGeometry(beamLength, 0.18, 0.18),
+          new THREE.MeshStandardMaterial({ color: 0x7cf3ff, emissive: 0x3aa5c9 })
+        );
+        beam.castShadow = false;
+        beam.receiveShadow = false;
+        const target = dir.clone().multiplyScalar(beamLength / 2);
+        beam.position.copy(start).add(target);
+        beam.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+        scene.add(beam);
+        setTimeout(() => scene.remove(beam), 150);
+
+        minions.forEach((minion) => {
+          const toMinion = new THREE.Vector3().subVectors(minion.mesh.position, start);
+          toMinion.y = 0;
+          const proj = toMinion.dot(dir);
+          if (proj < 0 || proj > beamLength) return;
+          const perpSq = toMinion.lengthSq() - proj * proj;
+          if (perpSq <= beamWidth * beamWidth) {
+            minion.hp -= damage;
+            minion.mesh.material.emissive.setHex(0x3aa5c9);
+          }
+        });
+        addLog("Rayo láser emitido.");
       }
 
       function tryArcanePulse() {
@@ -473,8 +525,22 @@
         }
       }
 
+      function autoShoot() {
+        if (state.paused) return;
+        const now = clock.elapsedTime;
+        if (now - state.lastShot >= state.cooldown) {
+          shoot();
+        }
+      }
+
       function animate() {
         const delta = clock.getDelta();
+        if (state.paused) {
+          renderer.render(scene, camera);
+          requestAnimationFrame(animate);
+          return;
+        }
+        autoShoot();
         updatePlayer(delta);
         updateProjectiles(delta);
         updateMinions(delta);
