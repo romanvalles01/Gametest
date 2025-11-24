@@ -421,6 +421,33 @@
         aimDir.subVectors(point, player.position).setY(0).normalize();
       }
 
+      function findNearestMinion() {
+        let closest = null;
+        let minDist = Infinity;
+        for (const minion of minions) {
+          const dist = minion.mesh.position.distanceToSquared(player.position);
+          if (dist < minDist) {
+            minDist = dist;
+            closest = minion;
+          }
+        }
+        return closest;
+      }
+
+      function updateAutoAim() {
+        const nearest = findNearestMinion();
+        if (!nearest) return;
+        aimDir.subVectors(nearest.mesh.position, player.position).setY(0);
+        if (aimDir.lengthSq() > 0.0001) {
+          aimDir.normalize();
+          player.lookAt(
+            player.position.x + aimDir.x,
+            player.position.y,
+            player.position.z + aimDir.z
+          );
+        }
+      }
+
       window.addEventListener("mousemove", updateAim);
 
       window.addEventListener("resize", () => {
@@ -512,6 +539,7 @@
       for (let i = 0; i < 8; i++) spawnMinion();
 
       function shoot() {
+        updateAutoAim();
         const now = clock.elapsedTime;
         if (now - state.lastShot < state.cooldown) return;
         if (state.paused) return;
@@ -528,6 +556,7 @@
       }
 
       function fireLaser() {
+        updateAutoAim();
         const now = clock.elapsedTime;
         if (state.paused) return;
         if (now - state.lastLaser < state.laserCooldown) return;
